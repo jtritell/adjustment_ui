@@ -1,0 +1,26 @@
+<package>
+  <name>adjustment_ui</name>
+  <version>0.8.4</version>
+  <description>
+     Application to fit a ladder model to a pointcloud
+  </description>
+  <maintainer email="jtritell@indiana.edu">Jordan Tritell</maintainer>
+  <license>BSD</license>
+
+  <url></url>
+  <author>Jordan Tritell</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>rviz</build_depend>
+  <build_depend>yaml-cpp</build_depend>
+  
+  <run_depend>roscpp</run_depend>
+  <run_depend>rviz</run_depend>
+  <run_depend>yaml-cpp</run_depend>
+
+  <export>
+      <rosdoc config="${prefix}/rosdoc.yaml"/>
+  </export>
+</package>
