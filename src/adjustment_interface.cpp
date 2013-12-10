@@ -1,143 +1,134 @@
-#include <QSlider>
-#include <QLabel>
-#include <QGridLayout>
-#include <QVBoxLayout>
-#include <QPushButton>
-#include <QSpinBox>
-#include <QTextFormat>
-
-#include <yaml-cpp/node.h>
-#include <yaml-cpp/parser.h>
-
 #include "rviz/visualization_manager.h"
 #include "rviz/render_panel.h"
 #include "rviz/display.h"
 #include "rviz/default_plugin/interactive_marker_display.h"
 #include "rviz/properties/ros_topic_property.h"
-#include "adjustment_interface.h"
 #include "rviz/config.h"
 #include "rviz/yaml_config_reader.h"
 
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Int32.h>
+#include <adjustment_localization/AdjustmentParameters.h>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/Quaternion.h>
+#include <tf/tf.h>
 #include <teleop_msgs/RateControl.h>
+#include "adjustment_interface.h"
 
-// Constructor for Adjustment_Interface.  This does most of the work of the class.
-Adjustment_Interface::Adjustment_Interface( QWidget* parent )
-  : QWidget( parent )
+#include "adjustment_interface.h"
+#include <stdio.h>
+
+void AdjustmentInterface::updateParameters(const adjustment_localization::AdjustmentParameters::ConstPtr& msg){
+    ui->spn_x->setValue(msg->x);
+}
+
+
+void AdjustmentInterface::setTilt(const geometry_msgs::Quaternion::ConstPtr& msg){
+    tf::Quaternion q;
+    tf::quaternionMsgToTF(*msg,q);
+    double roll,pitch,yaw;
+    tf::Matrix3x3(q).getRPY(roll,pitch,yaw);
+    ui->spn_roll->setValue(roll);
+    ui->spn_pitch->setValue(pitch);
+    ui->spn_yaw->setValue(yaw);
+}
+
+AdjustmentInterface::AdjustmentInterface( QWidget* parent ):
+    QMainWindow(parent),
+    ui(new Ui_adjustmentinterface)
 {
-
-  // Construct and lay out labels and slider controls.
-  QPushButton* request_pointcloud = new QPushButton("Request Pointcloud");
-  pointcloud_status = new QLabel("Not Requested");
-  pointcloud_status->setMinimumWidth(120);
-  pointcloud_status->setStyleSheet("QLabel { background-color : white; border-style : outset; border-width : 1px; border-color : black}");
-  QPushButton* send_adjustment = new QPushButton("Send Adjustment");
-  QPushButton* ladder_reset = new QPushButton("Reset");
-  QLabel* lbl_rungs = new QLabel("Rungs #");
-  QSpinBox* number_rungs = new QSpinBox();
-  rungs=6;
-  number_rungs->setValue(rungs);
-  QHBoxLayout* controls_layout = new QHBoxLayout();
-  controls_layout->addWidget( request_pointcloud);
-  controls_layout->addWidget( pointcloud_status);
-  controls_layout->addSpacing(30);
-  //  controls_layout->addWidget( lbl_rungs);
-  //controls_layout->addWidget( number_rungs );
-  controls_layout->addWidget( ladder_reset);
-  //controls_layout->addStretch();
-  //controls_layout->addWidget( plan_motion);
-
-  // Construct and lay out render panel.
-  render_panel_ = new rviz::RenderPanel();
-  QVBoxLayout* main_layout = new QVBoxLayout;
-  main_layout->addLayout( controls_layout );
-  main_layout->addWidget( render_panel_ );
-  setMinimumSize(640,480);
-
-  // Set the top-level layout for this Adjustment_Interface widget.
-  setLayout( main_layout );
-  // Make signal/slot connections.
-  //  connect( plan_motion, SIGNAL(clicked()),this, SLOT( toPlanner()));
-  connect( ladder_reset, SIGNAL(clicked()),this, SLOT( resetLadder()));
-  //  connect( number_rungs, SIGNAL(valueChanged(int)),this, SLOT(changeNumRungs(int)));
-  connect(request_pointcloud, SIGNAL(clicked()),this,SLOT(requestPointCloud()));
-  // Next we initialize the main RViz classes.
-  //
-  // The VisualizationManager is the container for Display objects,
-  // holds the main Ogre scene, holds the ViewController, etc.  It is
-  // very central and we will probably need one in every usage of
-  // librviz.
-  manager_ = new rviz::VisualizationManager( render_panel_ );
-  render_panel_->initialize( manager_->getSceneManager(), manager_ );
-  manager_->initialize();
-  manager_->startUpdate();
-
-  //load the configuration
-  rviz::YamlConfigReader reader;
-  rviz::Config config;
-  reader.readFile( config, "/home/jordan/.rviz/front_view.rviz");
-//  reader.readFile( config, "front_view.rviz");
-  if(reader.error())
-    std::cout<<"ERROR reading config\n";
-  else{
-    config = config.mapGetChild("Visualization Manager");
-    manager_->load(config);
-  }
-  n_ = ros::NodeHandle();
-  str_pub_ =n_.advertise<std_msgs::String>("export",1000);
-  int_pub_ =n_.advertise<std_msgs::Int32>("reset",1000);
-  int_pub2_ =n_.advertise<std_msgs::Int32>("rungs",1000);
-  pcd_client_ =n_.serviceClient<teleop_msgs::RateControl>("relay");
+    ui->setupUi(this);
+    rviz::RenderPanel*render_panel;
+    render_panel = new rviz::RenderPanel();
+    render_panel->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
+    ui->verticalLayout->addWidget(render_panel);
+    manager_ = new rviz::VisualizationManager( render_panel );
+    render_panel->initialize( manager_->getSceneManager(), manager_ );
+    manager_->initialize();
+    manager_->startUpdate();
+    
+    //load the configuration
+    rviz::YamlConfigReader reader;
+    rviz::Config config;
+    std::string path = ros::package::getPath("adjustment_ui");
+    path += "/robot_view.rviz";
+    std::cout<<path<<std::endl;
+    reader.readFile(config, path.c_str());
+    if(reader.error())
+      std::cout<<"ERROR reading config\n";
+    else{
+      config = config.mapGetChild("Visualization Manager");
+      manager_->load(config);
+    }
+    n_ = ros::NodeHandle();
+    adjustment_pub_ =n_.advertise<geometry_msgs::Point>("adjustment/point",1000);
+    tilt_pub_ =n_.advertise<geometry_msgs::Quaternion>("adjustment/tilt",1000);
+    link_pub_ =n_.advertise<std_msgs::Int32>("adjustment/link",1000);
+    pcd_client_ =n_.serviceClient<teleop_msgs::RateControl>("relay");
+    tilt_sub_ = n_.subscribe("/adjustment/tilt2",1000,&AdjustmentInterface::setTilt,this);
+    resetAdjustment();
 }
 
 // Destructor.
-Adjustment_Interface::~Adjustment_Interface()
+AdjustmentInterface::~AdjustmentInterface()
 {
   delete manager_;
 }
 
-void Adjustment_Interface::toPlanner()
-{
-  std_msgs::String myMsg;
-  myMsg.data = "Export";
-  str_pub_.publish(myMsg);
-  ros::spinOnce();
+
+void AdjustmentInterface::changeAdjustment(int adjustment){
+    std_msgs::Int32 msg;
+    msg.data=adjustment;
+    link_pub_.publish(msg);
+    resetAdjustment();
 }
 
-void Adjustment_Interface::requestPointCloud()
+void AdjustmentInterface::resetAdjustment(){
+    geometry_msgs::Point myMsg;
+    myMsg.x=myMsg.y=myMsg.z=0;
+    ui->spn_x->setValue(0);
+    ui->spn_y->setValue(0);
+    ui->spn_z->setValue(0);
+    ui->spn_roll->setValue(0);
+    ui->spn_pitch->setValue(0);
+    ui->spn_yaw->setValue(0);
+    sendAdjustment();
+}
+
+void AdjustmentInterface::sendAdjustment()
 {
-    pointcloud_status->setText("Requesting...");
-    pointcloud_status->setStyleSheet("QLabel { background-color : yellow;border-style : outset; border-width : 1px; border-color : black;}");
+    geometry_msgs::Point myMsg;
+    myMsg.x=ui->spn_x->value();
+    myMsg.y=ui->spn_y->value();
+    myMsg.z=ui->spn_z->value();
+    adjustment_pub_.publish(myMsg);
+}
+
+void AdjustmentInterface::sendTilt()
+{
+    geometry_msgs::Quaternion myMsg;
+    tf::Quaternion q;
+    q.setRPY(ui->spn_roll->value(),ui->spn_pitch->value(),ui->spn_yaw->value());
+    tf::quaternionTFToMsg(q,myMsg);
+    tilt_pub_.publish(myMsg);
+}
+
+void AdjustmentInterface::requestPointCloud()
+{
+    ui->lbl_pcd_status->setText("Requesting...");
+    ui->lbl_pcd_status->setStyleSheet("QLabel { background-color : yellow;border-style : outset; border-width : 1px; border-color : black;}");
     teleop_msgs::RateControl srv;
     srv.request.Rate = -1.0;
     if (pcd_client_.call(srv))
     {
-        pointcloud_status->setText("Success");
-        pointcloud_status->setStyleSheet("QLabel { background-color : green;border-style : outset; border-width : 1px; border-color : black;}");
+        ui->lbl_pcd_status->setText("Success");
+        ui->lbl_pcd_status->setStyleSheet("QLabel { background-color : green;border-style : outset; border-width : 1px; border-color : black;}");
       }
     else
     {
-        pointcloud_status->setText("Service Failed");
-        pointcloud_status->setStyleSheet("QLabel { background-color : red;border-style : outset; border-width : 1px; border-color : black;}");
+        ui->lbl_pcd_status->setText("Service Failed");
+        ui->lbl_pcd_status->setStyleSheet("QLabel { background-color : red;border-style : outset; border-width : 1px; border-color : black;}");
     }
-    //if(pcd_pub.call)
-}
-
-void Adjustment_Interface::resetLadder()
-{
-    std_msgs::Int32 myMsg;
-    myMsg.data = rungs;
-    int_pub_.publish(myMsg);
-    ros::spinOnce();
-}
-
-void Adjustment_Interface::changeNumRungs(int num)
-{
-  rungs=num;
-  std_msgs::Int32 myMsg;
-  myMsg.data = rungs;
-  int_pub2_.publish(myMsg);
-  ros::spinOnce();
 }

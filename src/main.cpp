@@ -45,7 +45,7 @@ int main(int argc, char **argv)
   }
 
   QApplication app( argc, argv );
-  Adjustment_Interface* adjustment_interface = new Adjustment_Interface();
+  AdjustmentInterface* adjustment_interface = new AdjustmentInterface();
   adjustment_interface->show();
 
   app.exec();

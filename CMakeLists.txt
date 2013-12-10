@@ -1,13 +1,10 @@
-## BEGIN_TUTORIAL
-## This CMakeLists.txt file for rviz_plugin_tutorials builds both the TeleopPanel tutorial and the ImuDisplay tutorial.
-##
 ## First start with some standard catkin stuff.
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules/")
 
 cmake_minimum_required(VERSION 2.8.3)
 project(adjustment_ui)
-find_package(catkin REQUIRED COMPONENTS rviz roscpp)
-catkin_package()
+find_package(catkin REQUIRED COMPONENTS rviz roscpp roslib teleop_msgs message_generation)
+catkin_package(CATKIN_DEPENDS roscpp roslib rviz teleop_msgs message_runtime)
 include_directories(${catkin_INCLUDE_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})
 
@@ -19,6 +16,7 @@ link_directories(${catkin_LIBRARY_DIRS})
 ## This plugin includes Qt widgets, so we must include Qt like so:
 find_package(Qt4 COMPONENTS QtCore QtGui REQUIRED)
 include(${QT_USE_FILE})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 ##Adding ui file
 file(GLOB QT_FORMS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} src/AdjustmentInterface.ui)
 
